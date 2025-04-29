@@ -429,6 +429,9 @@ RUN pip install empy==3.3.4 && \
 
 RUN apt-get update && apt-get upgrade -y && apt-get install kmod -y
 
+COPY rgbd4.yaml /habitat-lab/habitat-lab/habitat/config/habitat/simulator/
+COPY minkloc3d_nclt.pth /OpenPlaceRecognition/weights/place_recognition/
+
 # jupyterlab port
 EXPOSE 8888
 # tensorboard (if any)
