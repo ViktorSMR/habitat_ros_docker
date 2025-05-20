@@ -187,7 +187,6 @@ RUN pip install matplotlib && \
 # RUN pip install git+https://github.com/openai/CLIP.git
 
 WORKDIR /
-# # services like lxde, xvfb, x11vnc, jupyterlab will be started
 
 RUN git clone https://github.com/naver/debit.git /debit && \
     cd /debit && \
@@ -380,6 +379,20 @@ RUN pip install netifaces && \
     pip install git+https://github.com/ros/genpy.git && \
     pip install python-gnupg
 
+RUN mkdir /catkin_ws/src
+
+COPY pose_noiser.zip /catkin_ws/src/
+COPY depth_image_proc.zip /catkin_ws/src/
+COPY toposlam_msgs.zip /catkin_ws/src/
+RUN unzip /catkin_ws/src/pose_noiser.zip -d /catkin_ws/src/ && \
+    rm -rf pose_noiser.zip && \
+    unzip /catkin_ws/src/toposlam_msgs.zip -d /catkin_ws/src/ && \
+    rm -rf toposlam_msgs.zip && \
+    unzip /catkin_ws/src/depth_image_proc.zip -d /catkin_ws/src/ && \
+    rm -rf depth_image_proc.zip
+
+RUN git clone https://github.com/ViktorSMR/habitat_ros.git -b toposlam_experiments /catkin_ws/src && \
+    git clone git@github.com:KirillMouraviev/PRISM-TopoMap.git -b localization_mode /catkin_ws/src
 
 EXPOSE 8888
 
