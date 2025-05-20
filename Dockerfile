@@ -99,8 +99,6 @@ RUN apt-key del 7fa2af80 && \
 RUN dpkg --add-architecture i386 && \
     apt-get update && \
     apt install -y libprotobuf-dev protobuf-compiler build-essential libssl-dev
-    # /bin/bash -c 'wget https://github.com/Kitware/CMake/releases/download/v3.21.3/cmake-3.21.3.tar.gz && \
-    # tar -zxvf cmake-3.21.3.tar.gz && cd cmake-3.21.3 && ./bootstrap && make && sudo make install'
 
 # Дополнительные APT-зависимости
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -151,20 +149,12 @@ RUN pip install torch==2.1.2+cu121 torchvision==0.16.2+cu121 --extra-index-url h
     pip install numpy
 
 
-# set FORCE_CUDA because during `docker build` cuda is not accessible
 ENV FORCE_CUDA="1"
 ARG TORCH_CUDA_ARCH_LIST="Kepler;Kepler+Tesla;Maxwell;Maxwell+Tegra;Pascal;Volta;Turing"
 ENV TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST}"
 
-#RUN pip install 'git+https://github.com/facebookresearch/fvcore'
-# install detectron2
-#RUN git clone https://github.com/facebookresearch/detectron2 detectron2_repo
-#WORKDIR /detectron2_repo
-#RUN git reset --hard 9eb4831f742ae6a13b8edb61d07b619392fb6543
 WORKDIR /
 
-
-#RUN pip install -e detectron2_repo
 
 RUN /bin/bash -c 'wget -qO - http://packages.lunarg.com/lunarg-signing-key-pub.asc | apt-key add -' && \
     apt install -y libxcb-dri3-0 libxcb-present0 libpciaccess0 libpng-dev libxcb-keysyms1-dev libxcb-dri3-dev libx11-dev g++-multilib \
@@ -172,35 +162,8 @@ RUN /bin/bash -c 'wget -qO - http://packages.lunarg.com/lunarg-signing-key-pub.a
     apt-get update && apt list -a lunarg-vktrace
 
 COPY nvidia_icd.json /etc/vulkan/icd.d/nvidia_icd.json
-
-# RUN wget -qO - http://packages.lunarg.com/lunarg-signing-key-pub.asc | apt-key add - && \
-#     wget -qO /etc/apt/sources.list.d/lunarg-vulkan-1.2.170-bionic.list http://packages.lunarg.com/vulkan/1.2.170/lunarg-vulkan-1.2.170-bionic.list && \
-#     apt update && apt install -y vulkan-sdk && apt upgrade -y && apt autoremove -y   
-
 RUN apt-get update
 RUN apt-get upgrade -y
-
-
-#RUN /bin/bash -c 'git clone --recursive https://github.com/shacklettbp/bps3D; \
-#cd bps3D; \
-#mkdir build; \
-#cd build; \
-#cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo ..; \
-#make' 
-
-#add_definitions(-D GLM_ENABLE_EXPERIMENTAL)
-
-#RUN /bin/bash -c 'git clone --recursive https://github.com/shacklettbp/bps-nav.git; \
-#cd bps-nav; \
-#cd simulator/python/bps_sim; \
-#pip install -e . # Build simulator; \
-#cd ../bps_pytorch; \
-#pip install -e . # Build pytorch integration; \
-#cd ../../../; \
-#pip install -e .'
-
-RUN apt-get update
-# RUN apt-get install -y kmod kbd
 
 RUN pip install matplotlib && \
     pip install tqdm && \
@@ -400,22 +363,6 @@ ARG DISTRO_VERSION=1.9.0
 RUN pip install distro==${DISTRO_VERSION}
 
 RUN pip install --user --upgrade https://github.com/unlimblue/KNN_CUDA/releases/download/0.2/KNN_CUDA-0.2-py3-none-any.whl
-# COPY requirements.txt .
-# RUN pip install -r requirements.txt && \
-#     rm requirements.txt
-
-
-# RUN pip install -e ~/OpenPlaceRecognition
-
-# RUN mkdir -p /catkin_ws/src
-
-# COPY habitat_ros /catkin_ws/src/habitat_ros
-# COPY toposlam_msgs /catkin_ws/src/toposlam_msgs
-# COPY PRISM-TopoMap /catkin_ws/src/PRISM-TopoMap
-
-# RUN cd /catkin_ws/src && \
-#     cd habitat_ros && \
-#     pip install -r requirements.txt 
 
 RUN pip install empy==3.3.4 && \
     pip install protobuf==3.20.0 && \
@@ -423,32 +370,31 @@ RUN pip install empy==3.3.4 && \
     pip install loguru && \
     pip install memory_profiler
 
-# Переходим в корневую папку рабочего пространства и собираем все пакеты с помощью catkin_make
-# RUN /bin/bash -c "source /opt/ros/noetic/setup.bash" && \
-#     cd /catkin_ws && /bin/bash -c "catkin_make"
-
 RUN apt-get update && apt-get upgrade -y && apt-get install kmod -y
 
-COPY rgbd4.yaml /habitat-lab/habitat-lab/habitat/config/habitat/simulator/
+COPY rgbd4.yaml /habitat-lab/habitat-lab/habitat/config/habitat/simulator/agents/
 COPY minkloc3d_nclt.pth /OpenPlaceRecognition/weights/place_recognition/
 
-# jupyterlab port
+RUN pip install netifaces && \
+    pip install pycryptodomex && \
+    pip install git+https://github.com/ros/genpy.git && \
+    pip install python-gnupg
+
+
 EXPOSE 8888
-# tensorboard (if any)
+
 EXPOSE 6006
-# startup
+
 COPY image /
 #COPY habitat-challenge-data /data_config
 ENV HOME /
 ENV SHELL /bin/bash
 
-# no password and token for jupyter
 ENV JUPYTER_PASSWORD "jupyter"
 ENV JUPYTER_TOKEN "jupyter"
 
 RUN chmod 777 /startup.sh
 RUN chmod 777 /usr/local/bin/jupyter.sh
 RUN chmod 777 /usr/local/bin/xvfb.sh
-
 
 ENTRYPOINT ["/startup.sh"]
