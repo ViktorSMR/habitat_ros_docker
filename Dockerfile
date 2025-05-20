@@ -394,6 +394,10 @@ RUN unzip /catkin_ws/src/pose_noiser.zip -d /catkin_ws/src/ && \
 RUN git clone https://github.com/ViktorSMR/habitat_ros.git -b toposlam_experiments /catkin_ws/src && \
     git clone git@github.com:KirillMouraviev/PRISM-TopoMap.git -b localization_mode /catkin_ws/src
 
+RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && \
+    cd /catkin_ws && \
+    catkin_make"
+
 EXPOSE 8888
 
 EXPOSE 6006

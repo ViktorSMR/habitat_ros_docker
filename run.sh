@@ -11,6 +11,5 @@ docker run --runtime=nvidia --gpus all --rm --name pointnav_docker \
 -p 5900:5900 \
 -p $2:8888 -e jup_port=$2 \
 -v ${HOME}/data/:/data \
--v ${HOME}/catkin_ws/:/catkin_ws \
 -v ${HOME}/.Xauthority:/root/.Xauthority:rw \
 -v ${HOME}/habitat_ros_docker:/root pointnav_docker \
