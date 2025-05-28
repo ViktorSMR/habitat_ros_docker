@@ -184,7 +184,7 @@ RUN pip install matplotlib && \
     pip install --upgrade numba && \
     pip install omegaconf && \
     pip install keyboard
-# RUN pip install git+https://github.com/openai/CLIP.git
+RUN pip install git+https://github.com/openai/CLIP.git
 
 WORKDIR /
 
@@ -379,24 +379,29 @@ RUN pip install netifaces && \
     pip install git+https://github.com/ros/genpy.git && \
     pip install python-gnupg
 
-RUN mkdir /catkin_ws/src
+RUN mkdir /catkin_ws_initial && mkdir /catkin_ws_initial/src
 
-COPY pose_noiser.zip /catkin_ws/src/
-COPY depth_image_proc.zip /catkin_ws/src/
-COPY toposlam_msgs.zip /catkin_ws/src/
-RUN unzip /catkin_ws/src/pose_noiser.zip -d /catkin_ws/src/ && \
-    rm -rf pose_noiser.zip && \
-    unzip /catkin_ws/src/toposlam_msgs.zip -d /catkin_ws/src/ && \
-    rm -rf toposlam_msgs.zip && \
-    unzip /catkin_ws/src/depth_image_proc.zip -d /catkin_ws/src/ && \
-    rm -rf depth_image_proc.zip
+COPY pose_noiser.zip /catkin_ws_initial/src/
+COPY pose_to_odom.zip /catkin_ws_initial/src/
+COPY depth_image_proc.zip /catkin_ws_initial/src/
+COPY toposlam_msgs.zip /catkin_ws_initial/src/
+RUN unzip /catkin_ws_initial/src/pose_noiser.zip -d /catkin_ws_initial/src/ && \
+    rm -rf /catkin_ws_initial/src/pose_noiser.zip && \
+    unzip /catkin_ws_initial/src/pose_to_odom.zip -d /catkin_ws_initial/src/ && \
+    rm -rf /catkin_ws_initial/src/pose_to_odom.zip && \
+    unzip /catkin_ws_initial/src/toposlam_msgs.zip -d /catkin_ws_initial/src/ && \
+    rm -rf /catkin_ws_initial/src/toposlam_msgs.zip && \
+    unzip /catkin_ws_initial/src/depth_image_proc.zip -d /catkin_ws_initial/src/ && \
+    rm -rf /catkin_ws_initial/src/depth_image_proc.zip
 
-RUN git clone https://github.com/ViktorSMR/habitat_ros.git -b toposlam_experiments /catkin_ws/src && \
-    git clone git@github.com:KirillMouraviev/PRISM-TopoMap.git -b localization_mode /catkin_ws/src
+RUN git clone https://github.com/ViktorSMR/habitat_ros.git -b toposlam_experiments /catkin_ws_initial/src/habitat_ros && \
+    git clone https://github.com/KirillMouraviev/PRISM-TopoMap.git -b localization_mode /catkin_ws_initial/src/PRISM-TopoMap
 
-RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && \
-    cd /catkin_ws && \
-    catkin_make"
+RUN mkdir /data_initial && /data_initial/scene_datasets && /data_initial/models
+
+COPY configs /data_initial/configs
+COPY datasets /data_initial/datasets
+COPY gibson-2plus-mp3d-train-val-test-se-resneXt50-rgb /data_initial/models/
 
 EXPOSE 8888
 

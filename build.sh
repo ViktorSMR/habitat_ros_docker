@@ -1,1 +1,1 @@
-docker build -t pointnav_docker .
+docker build -t ros_docker .

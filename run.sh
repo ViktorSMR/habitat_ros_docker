@@ -1,6 +1,6 @@
 xhost +local:docker || true
 xhost +SI:localuser:root
-docker run --runtime=nvidia --gpus all --rm --name pointnav_docker \
+docker run --runtime=nvidia --gpus all --rm --name ros_docker \
 --env="DISPLAY=$DISPLAY" \
 --env="QT_X11_NO_MITSHM=1" \
 --device /dev/nvidia0:/dev/nvidia0 \
@@ -11,5 +11,5 @@ docker run --runtime=nvidia --gpus all --rm --name pointnav_docker \
 -p 5900:5900 \
 -p $2:8888 -e jup_port=$2 \
 -v ${HOME}/data/:/data \
--v ${HOME}/.Xauthority:/root/.Xauthority:rw \
--v ${HOME}/habitat_ros_docker:/root pointnav_docker \
+-v ${HOME}/catkin_ws/:/catkin_ws \
+-v ${HOME}/.Xauthority:/root/.Xauthority:rw
