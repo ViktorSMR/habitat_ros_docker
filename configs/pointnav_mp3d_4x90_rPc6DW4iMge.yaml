@@ -17,7 +17,7 @@ habitat:
   task:
     measurements:
       success:
-        success_distance: 1.0
+        success_distance: 0.5
       top_down_map:
         type: TopDownMap
     success_reward: 10.0
@@ -34,8 +34,6 @@ habitat:
         dimensionality: 3
       pointgoal_with_gps_compass_sensor:
         type: PointGoalWithGPSCompassSensor
-        goal_format: CARTESIAN
-        dimensionality: 3
       agent_position_sensor:
         type: AgentPositionSensor
         answer_to_life: 42
@@ -48,6 +46,13 @@ habitat:
     agents:
       main_agent:
         sim_sensors:
+          rgb_for_agent:
+            type: HabitatSimRGBSensor
+            width: 256
+            height: 256
+            hfov: 90
+            position: [0, 0.88, 0]
+            orientation: [0, 0, 0]
           rgb:
             type: HabitatSimRGBSensor
             width: 640
@@ -153,9 +158,9 @@ habitat:
             orientation: [0, -1.5708, 0]
             
   environment:
-    max_episode_steps: 100000
+    max_episode_steps: 10000
     iterator_options:
-      max_scene_repeat_steps: 50000
+      max_scene_repeat_steps: 5000
   dataset:
     type: PointNav-v1
     split: val_mini
