@@ -1,6 +1,6 @@
 xhost +local:docker || true
 xhost +SI:localuser:root
-docker run --runtime=nvidia --gpus all --rm --name ros_docker \
+docker run --runtime=nvidia --gpus all -it --rm --name ros_docker \
 --env="DISPLAY=$DISPLAY" \
 --env="QT_X11_NO_MITSHM=1" \
 --device /dev/nvidia0:/dev/nvidia0 \
@@ -10,6 +10,7 @@ docker run --runtime=nvidia --gpus all --rm --name ros_docker \
 --privileged \
 -p 5900:5900 \
 -p $2:8888 -e jup_port=$2 \
--v ${HOME}/data/:/data \
--v ${HOME}/catkin_ws/:/catkin_ws \
--v ${HOME}/.Xauthority:/root/.Xauthority:rw
+-v ${HOME}/habitat-lab/data/scene_datasets/:/data/scene_datasets \
+-v ${HOME}/TopoSLAM/toposlam_ws/data/habitat_mipt_bags/mp3d_rlnav/:/data/maps \
+-v ${HOME}/.Xauthority:/root/.Xauthority:rw \
+ros_docker

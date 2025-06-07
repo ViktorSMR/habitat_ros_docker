@@ -83,17 +83,17 @@ RUN curl https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86
     apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
 # Настройка репозитория CUDA и установка инструментов компиляции
-COPY cuda-repo-ubuntu2404-12-6-local_12.6.2-560.35.03-1_amd64.deb /
-RUN apt-key del 7fa2af80 && \
-    dpkg -i cuda-repo-ubuntu2404-12-6-local_12.6.2-560.35.03-1_amd64.deb && \
-    cp /var/cuda-repo-ubuntu2404-12-6-local/cuda-*-keyring.gpg /usr/share/keyrings/ && \
-    wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-ubuntu2404.pin && \
-    mv cuda-ubuntu2404.pin /etc/apt/preferences.d/cuda-repository-pin-600 && \
-    wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb && \
-    dpkg -i cuda-keyring_1.1-1_all.deb && \
-    curl https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/7fa2af80.pub | apt-key add - && \
-    add-apt-repository ppa:ubuntu-toolchain-r/test && \
-    apt update && apt install -y gcc g++
+# COPY cuda-repo-ubuntu2404-12-6-local_12.6.2-560.35.03-1_amd64.deb /
+# RUN apt-key del 7fa2af80 && \
+#     dpkg -i cuda-repo-ubuntu2404-12-6-local_12.6.2-560.35.03-1_amd64.deb && \
+#     cp /var/cuda-repo-ubuntu2404-12-6-local/cuda-*-keyring.gpg /usr/share/keyrings/ && \
+#     wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-ubuntu2404.pin && \
+#     mv cuda-ubuntu2404.pin /etc/apt/preferences.d/cuda-repository-pin-600 && \
+#     wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb && \
+#     dpkg -i cuda-keyring_1.1-1_all.deb && \
+#     curl https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/7fa2af80.pub | apt-key add - && \
+#     add-apt-repository ppa:ubuntu-toolchain-r/test && \
+#     apt update && apt install -y gcc g++
 
 # Добавление архитектуры i386 и сборка CMake из исходников
 RUN dpkg --add-architecture i386 && \
@@ -353,7 +353,7 @@ RUN pip install paddlepaddle-gpu==2.6.1.post120 -f https://www.paddlepaddle.org.
 ARG PADDLEOCR_VERSION=2.10.0
 RUN pip install paddleocr==${PADDLEOCR_VERSION}
 
-RUN git clone https://github.com/OPR-Project/OpenPlaceRecognition.git -b feat/toposlam && \
+RUN git clone https://github.com/OPR-Project/OpenPlaceRecognition.git --branch feat/toposlam && \
     cd OpenPlaceRecognition && \
     git submodule update --init && \
     pip install -e .
@@ -379,7 +379,7 @@ RUN pip install netifaces && \
     pip install git+https://github.com/ros/genpy.git && \
     pip install python-gnupg
 
-RUN mkdir /catkin_ws_initial && mkdir /catkin_ws_initial/src
+RUN mkdir /catkin_ws_initial && mkdir -p /catkin_ws_initial/src
 
 COPY pose_noiser.zip /catkin_ws_initial/src/
 COPY pose_to_odom.zip /catkin_ws_initial/src/
@@ -394,14 +394,16 @@ RUN unzip /catkin_ws_initial/src/pose_noiser.zip -d /catkin_ws_initial/src/ && \
     unzip /catkin_ws_initial/src/depth_image_proc.zip -d /catkin_ws_initial/src/ && \
     rm -rf /catkin_ws_initial/src/depth_image_proc.zip
 
+# Adding random for ignoring cache and forcing repos update
+ADD "https://www.random.org/cgi-bin/randbyte?nbytes=10&format=h" skipcache
 RUN git clone https://github.com/ViktorSMR/habitat_ros.git -b toposlam_experiments /catkin_ws_initial/src/habitat_ros && \
-    git clone https://github.com/KirillMouraviev/PRISM-TopoMap.git -b localization_mode /catkin_ws_initial/src/PRISM-TopoMap
+    git clone https://github.com/KirillMouraviev/PRISM-TopoMap.git --branch localization_mode /catkin_ws_initial/src/PRISM-TopoMap
 
-RUN mkdir /data_initial && /data_initial/scene_datasets && /data_initial/models
+RUN mkdir /data_initial && mkdir -p /data_initial/scene_datasets && mkdir -p /data_initial/models
 
 COPY configs /data_initial/configs
 COPY datasets /data_initial/datasets
-COPY gibson-2plus-mp3d-train-val-test-se-resneXt50-rgb /data_initial/models/
+COPY gibson-2plus-mp3d-train-val-test-se-resneXt50-rgb.pth /data_initial/models/
 
 EXPOSE 8888
 
