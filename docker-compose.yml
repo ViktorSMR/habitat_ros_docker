@@ -1,0 +1,16 @@
+services:
+  habitat_ros:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+      network: host
+      args:
+        INSTALL_ROS1: "true"
+        HOST_UID: 1000
+        HOST_GID: 1000
+    image: habitat_ros_image
+    command: bash
+    network_mode: host
+    ipc: host
+    # privileged: true

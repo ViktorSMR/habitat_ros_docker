@@ -1,6 +1,6 @@
 xhost +local:docker || true
 xhost +SI:localuser:root
-docker run --runtime=nvidia --gpus all -it --rm --name ros_docker \
+docker run --runtime=nvidia --gpus all -it --rm --name habitat_ros_docker \
 --env="DISPLAY=$DISPLAY" \
 --env="QT_X11_NO_MITSHM=1" \
 --device /dev/nvidia0:/dev/nvidia0 \
@@ -13,4 +13,4 @@ docker run --runtime=nvidia --gpus all -it --rm --name ros_docker \
 -v ${HOME}/habitat-lab/data/scene_datasets/:/data/scene_datasets \
 -v ${HOME}/TopoSLAM/toposlam_ws/data/habitat_mipt_bags/mp3d_rlnav/:/data/maps \
 -v ${HOME}/.Xauthority:/root/.Xauthority:rw \
-ros_docker
+habitat_ros_image

@@ -1,1 +1,1 @@
-docker build -t ros_docker .
+docker compose build habitat_ros

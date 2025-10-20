@@ -1,4 +1,124 @@
-FROM nvidia/cudagl:11.0-devel-ubuntu20.04
+# syntax=docker/dockerfile:1
+
+###############################################################################
+### 1. Builder stage
+###############################################################################
+ARG CUDA_TAG=12.1.1-cudnn8-devel-ubuntu20.04
+
+FROM nvcr.io/nvidia/cuda:${CUDA_TAG} AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+ARG MAX_JOBS=4
+
+ARG PYTORCH_CUDA=cu121
+ARG PYTORCH_VERSION=2.1.2
+ARG TORCHVISION_VERSION=0.16.2
+ARG NUMPY_VERSION=1.24.4
+ARG ME_COMMIT=4b628a7
+ARG FAISS_COMMIT=e45ae24
+
+ARG PIP_VERSION=25.0.1
+ARG WHEEL_VERSION=0.45.1
+ARG SETUPTOOLS_VERSION=69.0.3
+ARG NINJA_VERSION=1.11.1.1
+
+RUN --mount=type=cache,target=/var/cache/apt \
+    apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        git \
+        cmake \
+        wget \
+        swig \
+        ninja-build \
+        python3-dev \
+        python3-pip \
+        libopenblas-dev \
+        libomp-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# --Python base---------------------------------------------------------------
+RUN python3 -m pip --no-cache-dir install \
+        pip==${PIP_VERSION} \
+        wheel==${WHEEL_VERSION} \
+        setuptools==${SETUPTOOLS_VERSION} \
+        ninja==${NINJA_VERSION} \
+        numpy==${NUMPY_VERSION}
+
+###############################################################################
+### 1a. PyTorch wheel (including torchvision and dependencies)
+###############################################################################
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip wheel --wheel-dir /wheels \
+        torch==${PYTORCH_VERSION} \
+        torchvision==${TORCHVISION_VERSION} \
+        --index-url https://download.pytorch.org/whl/${PYTORCH_CUDA}
+# MinkowskiEngine require torch installation to build itself
+RUN python3 -m pip install --no-cache-dir /wheels/torch*.whl
+
+###############################################################################
+### 1b. MinkowskiEngine wheel
+###############################################################################
+WORKDIR /build/mink
+ENV TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0 7.5 8.0 8.6"
+ENV TORCH_NVCC_FLAGS="-Xfatbin -compress-all"
+ENV CUDA_HOME=/usr/local/cuda-12.1
+RUN git clone --recursive https://github.com/alexmelekhin/MinkowskiEngine.git \
+        && cd MinkowskiEngine \
+        && git checkout 6532dc3 \
+        && python3 setup.py bdist_wheel \
+                --force_cuda \
+                --blas=openblas \
+                --dist-dir /wheels
+
+###############################################################################
+### 1c. Faiss-GPU wheel
+###############################################################################
+# upgrade cmake
+RUN wget https://github.com/Kitware/CMake/releases/download/v3.26.5/cmake-3.26.5-linux-x86_64.sh && \
+    mkdir /opt/cmake-3.26.5 && \
+    bash cmake-3.26.5-linux-x86_64.sh --skip-license --prefix=/opt/cmake-3.26.5/ && \
+    ln -s /opt/cmake-3.26.5/bin/* /usr/local/bin && \
+    rm cmake-3.26.5-linux-x86_64.sh
+WORKDIR /build/faiss
+RUN git clone https://github.com/facebookresearch/faiss.git \
+    && cd faiss \
+    && git checkout c3b93749 \
+    && cmake -B build . \
+        -Wno-dev \
+        -DFAISS_ENABLE_GPU=ON \
+        -DFAISS_ENABLE_PYTHON=ON \
+        -DBUILD_TESTING=OFF \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCUDAToolkit_ROOT=${CUDA_HOME} \
+        -DCMAKE_CUDA_ARCHITECTURES="60;61;70;75;80;86" \
+    && make -C build -j${MAX_JOBS} faiss \
+    && make -C build -j${MAX_JOBS} swigfaiss \
+    && cd build/faiss/python \
+    && python3 setup.py bdist_wheel --dist-dir /wheels
+
+###############################################################################
+### 2. Dev/runtime stage
+###############################################################################
+FROM nvcr.io/nvidia/cuda:${CUDA_TAG} AS dev
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+ARG INSTALL_ROS1=false
+ENV ROS_DISTRO=noetic
+
+# — lightweight system packages for interactive work —
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3-dev \
+        python3-pip \
+        python-is-python3 \
+        git \
+        nano \
+        vim \
+        sudo \
+        wget \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN curl -s https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/3bf863cc.pub | apt-key add -
 
@@ -26,8 +146,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN curl -L -o ~/miniconda.sh -O  https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh  &&\
     chmod +x ~/miniconda.sh &&\
     ~/miniconda.sh -b -p /opt/conda &&\
-    rm ~/miniconda.sh &&\
-    /opt/conda/bin/conda install numpy pyyaml scipy ipython mkl mkl-include &&\
+    rm ~/miniconda.sh
+RUN /opt/conda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main \
+ && /opt/conda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+RUN /opt/conda/bin/conda install numpy pyyaml scipy ipython mkl mkl-include &&\
     /opt/conda/bin/conda clean -ya
 ENV PATH /opt/conda/bin:$PATH
 
@@ -71,12 +193,12 @@ RUN curl https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86
         chromium-browser xterm terminator zenity make cmake gcc libc6-dev \
         x11-xkb-utils xauth xfonts-base xkb-data \
         mesa-utils xvfb libgl1-mesa-dri libgl1-mesa-glx libglib2.0-0 libxext6 libsm6 libxrender1 \
-        libglu1 libglu1:i386 libxv1 libxv1:i386 \
+        libglu1 libxv1 \
         libsuitesparse-dev libgtest-dev \
         libeigen3-dev libsdl1.2-dev libarmadillo-dev libsdl-image1.2-dev libsdl-dev \
         software-properties-common supervisor vim-tiny dbus-x11 x11-utils alsa-utils \
         lxde x11vnc gtk2-engines-murrine gnome-themes-standard gtk2-engines-pixbuf gtk2-engines-murrine firefox libxmu-dev \
-        libssl-dev:i386 libxext-dev x11proto-gl-dev \
+        libxext-dev x11proto-gl-dev \
         ninja-build meson autoconf libtool \
         zlib1g-dev libjpeg-dev ffmpeg xorg-dev python-opengl python3-opengl libsdl2-dev swig \
         libglew-dev libboost-dev libboost-thread-dev libboost-filesystem-dev libpython2.7-dev && \
@@ -184,186 +306,59 @@ RUN pip install matplotlib && \
     pip install --upgrade numba && \
     pip install omegaconf && \
     pip install keyboard
-RUN pip install git+https://github.com/openai/CLIP.git
 
-WORKDIR /
+# WARNING: This allows sudo without password for all users in the sudo group
+RUN echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
 
-RUN git clone https://github.com/naver/debit.git /debit && \
-    cd /debit && \
-    git clone https://github.com/naver/croco src/croco && \
-    find src/croco -type d -exec touch {}/__init__.py \; && \
-    find src/croco/models -name "*.py" -exec sed -ie 's/^from models/from /' {} \; && \
-    pip install -e . && \
-    mkdir -p out/ckpt/hab_bl/imgnav && cd out/ckpt/hab_bl/imgnav && \
-    curl -LO https://download.europe.naverlabs.com/navigation/debit/debit_large.pth && \
-    curl -LO https://download.europe.naverlabs.com/navigation/debit/debit_base.pth && \
-    curl -LO https://download.europe.naverlabs.com/navigation/debit/debit_small.pth && \
-    curl -LO https://download.europe.naverlabs.com/navigation/debit/debit_tiny.pth
+# — create a user with the host's UID and GID —
+ARG USER_NAME=docker_prism
+ARG HOST_UID=1000
+ARG HOST_GID=1000
+ENV HOME=/home/${USER_NAME}
+RUN groupadd --gid ${HOST_GID} ${USER_NAME} \
+    && useradd --uid ${HOST_UID} \
+               --gid ${HOST_GID} \
+               --create-home \
+               --shell /bin/bash \
+               ${USER_NAME} \
+    && usermod -aG sudo ${USER_NAME}
 
-WORKDIR /
+# — copy the compiled wheels and install them —
+COPY --from=builder /wheels /tmp/wheels
+RUN rm -rf /tmp/wheels/pillow* \
+    && python3 -m pip install --no-cache-dir /tmp/wheels/*.whl \
+    && rm -rf /tmp/wheels
 
-RUN cd habitat-lab/habitat-baselines && \
-    pip install .
+# Install Open3D
+RUN python3 -m pip install open3d
 
+RUN apt-get update \
+    && apt-get install -y libopenblas-dev ffmpeg libsm6 libxext6
 
-RUN sh -c 'echo "deb http://packages.ros.org/ros/ubuntu $(lsb_release -sc) main" > /etc/apt/sources.list.d/ros-latest.list'
-RUN curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.key | sudo apt-key add -
-RUN apt-get update
-RUN apt-get install ros-noetic-desktop-full -y
-RUN echo "source /opt/ros/noetic/setup.bash" >> ~/.bashrc
+# Install OpenPlaceRecognition
+RUN python3 -m pip install --upgrade setuptools \
+    && python3 -m pip install --upgrade pip
+RUN cd ${HOME} \
+    && git clone --branch feat/toposlam https://github.com/OPR-Project/OpenPlaceRecognition \
+    && cd OpenPlaceRecognition \
+    && python3 -m pip install -e .
 
-RUN apt-get install python3-rosdep python3-rosinstall python3-rosinstall-generator python3-wstool build-essential -y
-RUN apt-get install python3-empy -y
-RUN pip install empy catkin_pkg
-RUN pip install rosdep
-RUN apt-get update
-RUN rosdep init
-RUN rosdep update
-
-ARG MAX_JOBS=4
-
-RUN apt-get update && apt-get upgrade -y && apt-get install -y \
-    curl \
-    git \
-    wget \
-    vim \
-    sudo \
-    tar \
-    unzip \
-    openssh-server \
-    python3-pip \
-    build-essential \
-    ninja-build \
-    cmake \
-    swig \
-    libopenblas-dev \
-    ffmpeg \
-    libsm6 \
-    libxext6 \
-    libssl-dev \
-    zlib1g-dev \
-    libbz2-dev \
-    libreadline-dev \
-    libsqlite3-dev\
-    libncursesw5-dev \
-    xz-utils \
-    tk-dev \
-    libxml2-dev \
-    libxmlsec1-dev \
-    libffi-dev \
-    liblzma-dev \
-    locales \
-    language-pack-en \
-    language-pack-ru \
-    && rm -rf /var/lib/apt/lists/*
-
-# Ensure locale environment variables are properly set
-RUN locale-gen en_US.UTF-8 ru_RU.UTF-8
-ENV LANG=en_US.UTF-8
-ENV LANGUAGE=en_US:en
-ENV LC_ALL=en_US.UTF-8
-
-# upgrade pip
-ARG PIP_VERSION=23.3.2
-ARG SETUPTOOLS_VERSION=69.0.3
-RUN pip install pip==${PIP_VERSION} setuptools==${SETUPTOOLS_VERSION}
-
-ARG NINJA_VERSION=1.11.1.1
-RUN pip install ninja==${NINJA_VERSION}
-ENV TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0 7.5 8.0 8.6"
-ENV TORCH_NVCC_FLAGS="-Xfatbin -compress-all"
-ENV CUDA_HOME=/usr/local/cuda-12.1
-RUN git clone --recursive "https://github.com/alexmelekhin/MinkowskiEngine.git" && \
-    cd MinkowskiEngine && \
-    git checkout 6532dc3 && \
-    python3 setup.py install --force_cuda --blas=openblas && \
-    cd .. && \
-    rm -rf MinkowskiEngine
-
-RUN pip install cmake==3.26.4
-
-
-RUN git clone https://github.com/facebookresearch/faiss.git && \
-    cd faiss && \
-    git checkout c3b93749 && \
-    cmake -B build . \
-        -Wno-dev \
-        -DFAISS_ENABLE_GPU=ON \
-        -DFAISS_ENABLE_PYTHON=ON \
-        -DBUILD_TESTING=OFF \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCUDAToolkit_ROOT=/usr/local/cuda-12.1 \
-        -DCMAKE_CUDA_ARCHITECTURES="60;61;70;75;80;86" && \
-    make -C build -j${MAX_JOBS} faiss && \
-    make -C build -j${MAX_JOBS} swigfaiss && \
-    cd build/faiss/python && python3 setup.py install && \
-    cd / && \
-    rm -rf faiss
-
-RUN pip install onnxruntime-gpu==1.18 --extra-index-url \
-    https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/ && \
-    pip install tensorrt==8.6.0 && \
-    pip install torch-tensorrt==2.1.0 --extra-index-url https://download.pytorch.org/whl/test/cu121 && \
-    pip install colored polygraphy --extra-index-url https://pypi.ngc.nvidia.com && \
-    pip install onnx
-
-RUN git clone https://github.com/isl-org/Open3D.git && cd Open3D && git checkout c8856fc
-WORKDIR /Open3D
-RUN bash util/install_deps_ubuntu.sh assume-yes && \
-    rm -rf /var/lib/apt/lists/*
-RUN mkdir build && cd build && \
-    cmake \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DBUILD_SHARED_LIBS=ON \
-        -DGLIBCXX_USE_CXX11_ABI=OFF \
-        -DBUILD_CUDA_MODULE=ON \
-        -DBUILD_PYTORCH_OPS=ON \
-        -DBUILD_TENSORFLOW_OPS=OFF \
-        -DPYTHON_EXECUTABLE=$(which python) \
-        -DCMAKE_INSTALL_PREFIX=/usr/local \
-        .. && \
-    make -j${MAX_JOBS} && \
-    make install -j${MAX_JOBS}
-ARG YAPF_VERSION=0.43.0
-RUN pip install yapf==${YAPF_VERSION}
-RUN cd build && make install-pip-package -j${MAX_JOBS}
-    
-# install pytorch3d
-RUN pip install "git+https://github.com/facebookresearch/pytorch3d.git@stable" 
-    
-# install PointMamba requirements
-WORKDIR /
-ARG CAUSALCONV1D_VERSION=1.4.0
-ARG MAMBA_VERSION=1.2.2
-RUN git clone https://github.com/alexmelekhin/PointMamba.git && \
-    cd PointMamba && \
-    pip install -r requirements.txt && \
-    cd pointmamba/extensions/chamfer_dist && \
-    python setup.py install && \
-    cd ../emd && \
-    python setup.py install && \
-    pip install "git+https://github.com/alexmelekhin/Pointnet2_PyTorch.git#egg=pointnet2_ops&subdirectory=pointnet2_ops_lib" && \
-    pip install causal-conv1d==${CAUSALCONV1D_VERSION} && \
-    pip install mamba-ssm==${MAMBA_VERSION} && \
-    cd / && \
-    rm -rf PointMamba
-    
-# install PaddlePaddle and PaddleOCR for OCR tasks
-RUN pip install paddlepaddle-gpu==2.6.1.post120 -f https://www.paddlepaddle.org.cn/whl/linux/mkl/avx/stable.html
-ARG PADDLEOCR_VERSION=2.10.0
-RUN pip install paddleocr==${PADDLEOCR_VERSION}
-
-RUN git clone https://github.com/OPR-Project/OpenPlaceRecognition.git --branch feat/toposlam && \
-    cd OpenPlaceRecognition && \
-    git submodule update --init && \
-    pip install -e .
-
-ARG DISTRO_VERSION=1.9.0
-RUN pip install distro==${DISTRO_VERSION}
-
-RUN pip install --user --upgrade https://github.com/unlimblue/KNN_CUDA/releases/download/0.2/KNN_CUDA-0.2-py3-none-any.whl
+# - optional ROS1 Noetic installation -
+RUN if [ "$INSTALL_ROS1" = "true" ]; then \
+    apt-get update \
+    && apt-get install -y lsb-release \
+    && apt-get clean all; \
+    fi
+RUN if [ "$INSTALL_ROS1" = "true" ]; then \
+    sh -c 'echo "deb http://packages.ros.org/ros/ubuntu $(lsb_release -sc) main" > /etc/apt/sources.list.d/ros-latest.list' \
+    && curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | sudo apt-key add - \
+    && apt -y update \
+    && apt install -y ros-${ROS_DISTRO}-desktop-full \
+    && apt install -y python3-rosdep python3-rosinstall python3-rosinstall-generator python3-wstool build-essential; \
+    fi
 
 RUN pip install empy==3.3.4 && \
+    pip install catkin_pkg && \
     pip install protobuf==3.20.0 && \
     pip install rosnumpy && \
     pip install loguru && \
@@ -397,7 +392,7 @@ RUN unzip /catkin_ws_initial/src/pose_noiser.zip -d /catkin_ws_initial/src/ && \
 # Adding random for ignoring cache and forcing repos update
 ADD "https://www.random.org/cgi-bin/randbyte?nbytes=10&format=h" skipcache
 RUN git clone https://github.com/ViktorSMR/habitat_ros.git -b toposlam_experiments /catkin_ws_initial/src/habitat_ros && \
-    git clone https://github.com/KirillMouraviev/PRISM-TopoMap.git --branch localization_mode /catkin_ws_initial/src/PRISM-TopoMap
+    git clone https://github.com/KirillMouraviev/PRISM-TopoMap.git /catkin_ws_initial/src/PRISM-TopoMap
 
 RUN mkdir /data_initial && mkdir -p /data_initial/scene_datasets && mkdir -p /data_initial/models
 
